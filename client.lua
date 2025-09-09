@@ -45,7 +45,7 @@ end
 while true do
     local ok, err = pcall(function()
         while true do
-            local ok_recv, msg = pcall(ws.receive, ws)
+            local ok_recv, msg = pcall(function() return ws:receive() end)
             if not ok_recv then
                 print("receive error:", msg)
                 ws = connect_ws()
