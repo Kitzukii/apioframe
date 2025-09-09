@@ -37,9 +37,10 @@ while true do
         while true do
             local ok, msg = pcall(ws.receive)
             if not ok then
-                print("receive err:", msg)
+                print("receive err:", textutils.unserialiseJSON(msg))
                 return
             end
+            msg = textutils.unserialiseJSON(msg)
     
             if not msg then
                 print("conn closed, reconnecting")
