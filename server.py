@@ -1,73 +1,73 @@
-import asyncio
-import json
-import threading
-from flask import Flask, request, jsonify
-import websockets
+from flask import Flask, Blueprint, jsonify, request
+from flask_socketio import SocketIO, emit, disconnect
+import threading, time
 
+# Error helper
+def err(msg):
+    return jsonify({"error": msg})
+
+# App + SocketIO
 app = Flask(__name__)
-turtle_ws = None
-pending_responses = {}
+app.config['SECRET_KEY'] = 'CatsAreCute'
+socketio = SocketIO(app, cors_allowed_origins="*")
 
-@app.route("/frontend", methods=["POST"])
-def frontend():
-    global turtle_ws
-    if not turtle_ws:
-        return jsonify({"error": "Turtle not connected"}), 400
-    data = request.json
-    action = data.get("action")
-    action_id = str(id(data))
-    fut = asyncio.get_event_loop().create_future()
-    pending_responses[action_id] = fut
-    payload = {"id": action_id, "action": action}
-    if action == "run_code":
-        payload["code"] = data.get("code")
-    elif action == "move":
-        payload["direction"] = data.get("direction")
-    elif action not in ["run_scan", "get_location", "get_full_state"]:
-        return jsonify({"error": "Unknown action"}), 400
-    asyncio.run_coroutine_threadsafe(
-        turtle_ws.send(json.dumps(payload)),
-        asyncio.get_event_loop()
-    )
-    try: # there should be one on it now?
-        result = asyncio.run_coroutine_threadsafe(
-            wait_for_response(action_id), asyncio.get_event_loop()
-        ).result(timeout=10)
-        return jsonify(result)
-    except asyncio.TimeoutError:
-        return jsonify({"error": "Turtle did not respond"}), 504
-    finally:
-        pending_responses.pop(action_id, None)
+# Blueprints
+TURTLE_API = Blueprint("turtle", __name__, url_prefix="/turtle")
+WEB = Blueprint("web", __name__, url_prefix="/web")
 
-async def wait_for_response(action_id):
-    fut = pending_responses.get(action_id)
-    if fut:
-        return await fut
-    return None
+# Keepalive tracking
+last_keepalive = {}
+TIMEOUT = 5  # seconds
 
-async def turtle_handler(ws):
-    global turtle_ws
-    turtle_ws = ws
-    try:
-        async for msg in ws: # i swear if it crashes the server tho lol
-            data = json.loads(msg) # put
-            action_id = data.get("id")
-            if action_id and action_id in pending_responses:
-                fut = pending_responses[action_id]
-                if not fut.done():
-                    fut.set_result(data.get("result"))
-    finally:
-        turtle_ws = None
+def keepalive_monitor():
+    while True:
+        time.sleep(1)
+        now = time.time()
+        for sid, last in list(last_keepalive.items()):
+            if now - last > TIMEOUT:
+                print(f"Disconnecting {sid} due to timeout")
+                disconnect(sid)
+                last_keepalive.pop(sid, None)
 
-async def ws_server():
-    async with websockets.serve(turtle_handler, "", 8765):
-        await asyncio.Future()
+threading.Thread(target=keepalive_monitor, daemon=True).start()
 
-def start_ws_loop():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(ws_server())
+# Example turtle API endpoint
+@TURTLE_API.route("/request", methods=["POST"])
+def turtle_request():
+    if not request.is_json:
+        return err("rq_not_json")
+    data = request.get_json()
+    return jsonify({"status": "ok", "received": data})
+
+# Register blueprints
+app.register_blueprint(TURTLE_API)
+app.register_blueprint(WEB)
+
+# WebSocket events
+@socketio.on("connect")
+def t_conn():
+    sid = request.sid
+    print(f"Client {sid} connected")
+    last_keepalive[sid] = time.time()
+    emit("keepalive", {"msg": "ping"})  # tell client to reply with anything
+
+@socketio.on("keepalive")
+def handle_keepalive(msg=None):
+    sid = request.sid
+    print(f"Keepalive response from {sid}: {msg}")
+    last_keepalive[sid] = time.time()
+
+@socketio.on("message")
+def t_msg(msg):
+    sid = request.sid
+    print(f"Message from {sid}: {msg}")
+    emit("message", {"echo": msg})
+
+@socketio.on("disconnect")
+def t_deconn():
+    sid = request.sid
+    print(f"Client {sid} disconnected")
+    last_keepalive.pop(sid, None)
 
 if __name__ == "__main__":
-    threading.Thread(target=start_ws_loop, daemon=True).start()
-    app.run(host="0.0.0.0", port=5000)
+    socketio.run(app, host="0.0.0.0", port=8765)
