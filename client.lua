@@ -16,7 +16,7 @@ local function connect_ws()
 
             -- send registration message
             local ok_send, err = pcall(function()
-                ws:send(textutils.serialiseJSON({label=label}))
+                ws.send(textutils.serialiseJSON({label=label}))
             end)
             if not ok_send then
                 print("Failed to register:", err)
