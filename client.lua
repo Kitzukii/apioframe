@@ -5,7 +5,7 @@ local ws
 local function getLabel()
     return fs.open("label.txt", "r").readAll()
 end
-local label = getLabel()
+local label = "wawa"
 
 local function connect_ws()
     while true do
