@@ -1,4 +1,4 @@
-local url = "ws://localhost:5000/socket"
+local url = "ws://156.155.82.9:8765/ws"
 
 local ws
 local function connect_ws()
@@ -50,7 +50,7 @@ while true do
             print("received:", msg)
         end
     end)
-    
+
     if not ok then
         print("error in main loop:", err)
     end
