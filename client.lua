@@ -1,9 +1,6 @@
 local url = "ws://localhost:5000/socket"
 
-local sleep = sleep
-local htpp = http
 local ws
-
 local function connect_ws()
     while true do
         local ok, ws_f = pcall(
@@ -21,7 +18,6 @@ local function connect_ws()
         end
     end
 end
-
 connect_ws()
 
 -- helper: send a raw message with pcall
