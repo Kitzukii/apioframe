@@ -1,15 +1,20 @@
 local url = "ws://localhost:5000/socket"
-sleep = function(t) sleep(t) end
+
+local sleep = sleep
+local htpp = http
+local ws
 
 local function connect_ws()
     while true do
-        local ok, ws = pcall(function()
-            return http.websocket(url)
-        end)
+        local ok, ws_f = pcall(
+            http.websocket,
+            url
+        )
     
         if ok then
             print("connected")
-            return ws, true
+            ws = ws_f
+            break
         else
             print("connection failed, retrying in 5 seconds.")
             sleep(5)
@@ -21,9 +26,10 @@ connect_ws()
 
 -- helper: send a raw message with pcall
 local function send_message(msg)
-    local ok_send, err = pcall(function()
-        ws.send(msg)
-    end)
+    local ok_send, err = pcall(
+        ws.send,
+        msg
+    )
     if not ok_send then
         print("Failed to send message:", err)
     end
@@ -41,7 +47,7 @@ while true do
     
             if not msg then
                 print("conn closed, reconnecting")
-                connect_ws()
+                ws = connect_ws()
                 return
             end
     
