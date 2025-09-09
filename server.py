@@ -112,11 +112,10 @@ async def ws_route():
     finally:
         clients.pop(label, None)
 
-# Send a message to a specific turtle by label
-async def send_to_turtle(label, message):
+async def sendToClient(label, message):
     info = clients.get(label)
     if not info:
-        print(f"No turtle with label '{label}' connected")
+        print(f"No client with label '{label}' connected")
         return False
     ws = info["ws"]
     await ws.send(json.dumps(message))

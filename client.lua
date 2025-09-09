@@ -35,7 +35,7 @@ end
 while true do
     local ok, err = pcall(function()
         while true do
-            local ok, msg = pcall(function() return ws.receive() end)
+            local ok, msg = pcall(ws.receive)
             if not ok then
                 print("receive err:", msg)
                 return
@@ -50,6 +50,7 @@ while true do
             print("received:", msg)
         end
     end)
+    
     if not ok then
         print("error in main loop:", err)
     end
