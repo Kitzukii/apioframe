@@ -1,7 +1,11 @@
 local url = "ws://156.155.82.9:8765/ws"
 
 local ws
-local label = "turtle1"  -- give each client a unique label
+
+local function getLabel()
+    return fs.open("label.txt", "r").readAll()
+end
+local label = getLabel()
 
 local function connect_ws()
     while true do
@@ -11,7 +15,9 @@ local function connect_ws()
             print("connected")
 
             -- send registration message
-            local ok_send, err = pcall(ws.send, ws, textutils.serialiseJSON({label=label}))
+            local ok_send, err = pcall(function()
+                ws:send(textutils.serialiseJSON({label=label}))
+            end)
             if not ok_send then
                 print("Failed to register:", err)
                 sleep(5)
