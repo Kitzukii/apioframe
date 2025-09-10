@@ -1,5 +1,6 @@
-from quart import Quart, Blueprint, websocket, jsonify, request
-import asyncio, time, threading, json, secrets
+import asyncio, time, json, secrets
+from quart import Quart, Blueprint, jsonify, request, render_template
+import websockets
 
 # App + Blueprints
 app = Quart(__name__)
@@ -31,6 +32,14 @@ async def turtle_request():
 app.register_blueprint(TURTLE_API)
 app.register_blueprint(WEB)
 
+async def safe_send(ws, message: dict):
+    try:
+        if ws.closed:
+            return
+        await ws.send(json.dumps(message))
+    except websockets.exceptions.ConnectionClosed:
+        pass
+    
 # Keepalive monitor
 async def keepalive_monitor():
     while True:
@@ -45,70 +54,28 @@ async def keepalive_monitor():
                     pass
                 clients.pop(label, None)
 
-# WebSocket route
-@app.websocket("/ws")
-async def ws_route():
-    ws = websocket._get_current_object()
-
-    # First message must be registration with a label
+async def ws_handler(ws, path):
     try:
-        message = await ws.receive()
+        message = await ws.recv()
         data = json.loads(message)
         label = data.get("label")
         if not label:
-            await ws.send(json.dumps({"error": "No label provided"}))
+            await safe_send(ws, {"error": "No label provided"})
             await ws.close()
             return
         if label in clients:
-            await ws.send(json.dumps({"error": "Label already in use"}))
+            await safe_send(ws, {"error": "Label already in use"})
             await ws.close()
             return
     except Exception:
-        await ws.send(json.dumps({"error": "Invalid registration"}))
-        await ws.close()
+        await safe_send(ws, {"error": "Invalid registration"})
+        try:
+            await ws.close()
+        except:
+            pass
         return
 
-    # Assign secret token
-    client_secret = secrets.token_hex(16)
-    clients[label] = {
-        "ws": ws,
-        "secret": client_secret,
-        "last_keepalive": time.time()
-    }
-
-    print(f"Turtle connected: '{label}' (secret: {client_secret})")
-
-    # Send label and secret to client
-    await ws.send(json.dumps({
-        "type": "init",
-        "label": label,
-        "secret": client_secret
-    }))
-
-    # Initial keepalive ping
-    await ws.send(json.dumps({"type": "keepalive", "msg": "ping"}))
-
-    try:
-        while True:
-            message = await ws.receive()
-            try:
-                data = json.loads(message)
-            except json.JSONDecodeError:
-                data = message  # raw string
-
-            # Keepalive
-            if isinstance(data, dict) and data.get("type") == "keepalive":
-                clients[label]["last_keepalive"] = time.time()
-                print(f"Keepalive from '{label}': {data}")
-            else:
-                # Echo message
-                print(f"Message from '{label}': {data}")
-                await ws.send(json.dumps({"echo": data, "from": label}))
-    except Exception as e:
-        print(f"Turtle '{label}' disconnected ({e})")
-    finally:
-        clients.pop(label, None)
-
+# Function to send data to a client
 async def sendToClient(label, message):
     info = clients.get(label)
     if not info:
@@ -118,9 +85,18 @@ async def sendToClient(label, message):
     await ws.send(json.dumps(message))
     return True
 
-@app.before_serving
-async def startup():
+# Run both Quart + websockets server
+async def main():
+    # Start keepalive
     asyncio.create_task(keepalive_monitor())
 
+    # Start websocket server
+    ws_server = await websockets.serve(ws_handler, "0.0.0.0", 8765)
+
+    # Start Quart server
+    quart_task = asyncio.create_task(app.run_task(host="0.0.0.0", port=5000))
+
+    await asyncio.gather(ws_server.wait_closed(), quart_task)
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8765)
+    asyncio.run(main())
