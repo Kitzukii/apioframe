@@ -1,8 +1,8 @@
-local GITHUB_REPO = 
-"https://raw.githubusercontent.com/Ktzukii/<repo>/main/"
+local GITHUB_REPO =
+    "https://raw.githubusercontent.com/Kitzukii/apioframe/refs/heads/main/"
 
 local FILES = {
-    "agent.lua"
+    "agents/startup.lua"
 }
 
 local ID_FILE = "agent_id.json"
